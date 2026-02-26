@@ -399,9 +399,7 @@ public:
   void finalizeContents() override;
 
   int32_t getSizeReduction();
-  void addCMJTEntryCandidate(const Symbol *symbol, int csReduction);
   int getCMJTEntryIndex(const Symbol *symbol);
-  void addCMJALTEntryCandidate(const Symbol *symbol, int csReduction);
   int getCMJALTEntryIndex(const Symbol *symbol);
   void scanTableJumpEntries(const InputSection &sec) const;
 
@@ -416,10 +414,10 @@ private:
   uint32_t getIndex(const Symbol *symbol, uint32_t maxSize,
                     SmallVector<llvm::detail::DenseMapPair<const Symbol *, int>,
                                 0> &entriesList);
-  void writeEntries(uint8_t *buf,
-                    SmallVector<llvm::detail::DenseMapPair<const Symbol *, int>,
-                                0> &entriesList);
-  void padWords(uint8_t *buf, const uint8_t maxWordCount);
+  void writeEntries(
+      uint8_t *buf,
+      const llvm::SmallVectorImpl<
+          llvm::detail::DenseMapPair<const Symbol *, int>> &entriesList);
 
   // used in finalizeContents function.
   static constexpr size_t maxCMJTEntrySize = 32;

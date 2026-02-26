@@ -863,7 +863,8 @@ static void relaxCall(Ctx &ctx, const InputSection &sec, size_t i, uint64_t loc,
     sec.relaxAux->relocTypes[i] = R_RISCV_RVC_JUMP;
     sec.relaxAux->writes.push_back(0x2001); // c.jal
     remove = 6;
-  } else if (remove >= 6 && relaxTableJump(ctx, sec, i, loc, r, remove)) {
+  } else if ((remove >= (r.type == R_RISCV_JAL ? 2 : 6)) &&
+             relaxTableJump(ctx, sec, i, loc, r, remove)) {
     // relaxTableJump sets remove
   } else if (remove >= 4 && isInt<21>(displace)) {
     sec.relaxAux->relocTypes[i] = R_RISCV_JAL;
@@ -1598,20 +1599,10 @@ TableJumpSection::TableJumpSection(Ctx &ctx)
     : SyntheticSection(ctx, ".riscv.jvt", SHT_PROGBITS,
                        SHF_ALLOC | SHF_EXECINSTR, tableAlign) {}
 
-void TableJumpSection::addCMJTEntryCandidate(const Symbol *symbol,
-                                             int csReduction) {
-  addEntry(symbol, CMJTEntryCandidates, csReduction);
-}
-
 int TableJumpSection::getCMJTEntryIndex(const Symbol *symbol) {
   uint32_t index = getIndex(symbol, maxCMJTEntrySize, finalizedCMJTEntries);
   return index < finalizedCMJTEntries.size() ? (int)(startCMJTEntryIdx + index)
                                              : -1;
-}
-
-void TableJumpSection::addCMJALTEntryCandidate(const Symbol *symbol,
-                                               int csReduction) {
-  addEntry(symbol, CMJALTEntryCandidates, csReduction);
 }
 
 int TableJumpSection::getCMJALTEntryIndex(const Symbol *symbol) {
@@ -1668,11 +1659,13 @@ void TableJumpSection::scanTableJumpEntries(const InputSection &sec) const {
       else if (sec.relaxAux->relocTypes[i] == R_RISCV_JAL)
         csReduction = 2;
 
+      const auto &tableSection = ctx.in.riscvTableJumpSection;
       if (rd == 0)
-        ctx.in.riscvTableJumpSection->addCMJTEntryCandidate(r.sym, csReduction);
+        tableSection->addEntry(r.sym, tableSection->CMJTEntryCandidates,
+                               csReduction);
       else if (rd == X_RA)
-        ctx.in.riscvTableJumpSection->addCMJALTEntryCandidate(r.sym,
-                                                              csReduction);
+        tableSection->addEntry(r.sym, tableSection->CMJALTEntryCandidates,
+                               csReduction);
     }
     }
   }
@@ -1701,7 +1694,7 @@ void TableJumpSection::finalizeContents() {
   }
   // if table jump still got negative effect, give up.
   if (getSizeReduction() <= 0) {
-    warn("Table Jump Relaxation didn't got any reduction for code size.");
+    Log(ctx) << "table jump relaxation didn't get any reduction for code size";
     finalizedCMJTEntries.clear();
   }
 }
@@ -1726,16 +1719,12 @@ TableJumpSection::finalizeEntry(llvm::DenseMap<const Symbol *, int> EntryMap,
   std::sort(tempEntryVector.begin(), tempEntryVector.end(), cmp);
 
   auto finalizedVector = tempEntryVector;
-
   finalizedVector.resize(maxSize);
-
   // Drop any items that have a negative effect (i.e. increase code size).
-  while (!finalizedVector.empty()) {
-    if (finalizedVector.rbegin()->second < ctx.arg.wordsize)
-      finalizedVector.pop_back();
-    else
-      break;
-  }
+  auto it = llvm::find_if(llvm::reverse(finalizedVector), [=](auto &p) {
+              return p.second >= ctx.arg.wordsize;
+            }).base();
+  finalizedVector.erase(it, finalizedVector.end());
   return finalizedVector;
 }
 
@@ -1762,12 +1751,10 @@ int32_t TableJumpSection::getSizeReduction() {
   // JAE = number of entries emitted for the cm.jalt jumps x wordsize
 
   int32_t sizeReduction = -getSize();
-  for (auto entry : finalizedCMJTEntries) {
+  for (auto entry : finalizedCMJTEntries)
     sizeReduction += entry.second;
-  }
-  for (auto entry : finalizedCMJALTEntries) {
+  for (auto entry : finalizedCMJALTEntries)
     sizeReduction += entry.second;
-  }
   return sizeReduction;
 }
 
@@ -1777,27 +1764,26 @@ void TableJumpSection::writeTo(uint8_t *buf) {
   ctx.target->writeTableJumpHeader(buf);
   writeEntries(buf + startCMJTEntryIdx * ctx.arg.wordsize,
                finalizedCMJTEntries);
-  if (finalizedCMJALTEntries.size() > 0) {
-    padWords(buf + ((startCMJTEntryIdx + finalizedCMJTEntries.size()) *
-                    ctx.arg.wordsize),
-             startCMJALTEntryIdx);
+  if (!finalizedCMJALTEntries.empty()) {
+    // Filling the gap between CMJTEntries and CMJALTEntries (if any) with 0
+    size_t endCMJTEntryIdx = startCMJTEntryIdx + finalizedCMJTEntries.size();
+    uint8_t *padBuf = buf + endCMJTEntryIdx * ctx.arg.wordsize;
+    assert(endCMJTEntryIdx <= startCMJALTEntryIdx);
+    size_t padWordCount = startCMJALTEntryIdx - endCMJTEntryIdx;
+    for (size_t i = 0; i < padWordCount; ++i) {
+      if (ctx.arg.is64)
+        write64le(padBuf + i * ctx.arg.wordsize, 0);
+      else
+        write32le(padBuf + i * ctx.arg.wordsize, 0);
+    }
     writeEntries(buf + (startCMJALTEntryIdx * ctx.arg.wordsize),
                  finalizedCMJALTEntries);
   }
 }
 
-void TableJumpSection::padWords(uint8_t *buf, const uint8_t maxWordCount) {
-  for (size_t i = 0; i < maxWordCount; ++i) {
-    if (ctx.arg.is64)
-      write64le(buf + i, 0);
-    else
-      write32le(buf + i, 0);
-  }
-}
-
 void TableJumpSection::writeEntries(
     uint8_t *buf,
-    SmallVector<llvm::detail::DenseMapPair<const Symbol *, int>, 0>
+    const llvm::SmallVectorImpl<llvm::detail::DenseMapPair<const Symbol *, int>>
         &entriesList) {
   for (const auto &entry : entriesList) {
     assert(entry.second > 0);
