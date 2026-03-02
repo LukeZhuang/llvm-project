@@ -391,6 +391,11 @@ private:
   SmallVector<const Symbol *, 0> entries;
 };
 
+struct TableJumpEntry {
+  int saved;
+  int index;
+};
+
 // Used by RISC-V Zcmt table jump relaxation.
 class TableJumpSection final : public SyntheticSection {
 public:
@@ -402,29 +407,15 @@ public:
   void finalizeContents() override;
   int getCMJTEntryIndex(const Symbol *sym) const;
   int getCMJALTEntryIndex(const Symbol *sym) const;
-  bool isFinalized = false;
 
 private:
   static constexpr size_t maxCMJTEntrySize = 32;
   static constexpr size_t maxCMJALTEntrySize = 224;
   static constexpr size_t startCMJALTEntryIdx = 32;
 
-  // Candidate maps: symbol -> total code size reduction.
-  llvm::DenseMap<const Symbol *, int> cmjtCandidates;
-  llvm::DenseMap<const Symbol *, int> cmjaltCandidates;
-
-  // Finalized ordered entries and index maps for O(1) lookup.
-  SmallVector<std::pair<const Symbol *, int>, 0> cmjtEntries;
-  SmallVector<std::pair<const Symbol *, int>, 0> cmjaltEntries;
-  llvm::DenseMap<const Symbol *, uint32_t> cmjtIndexMap;
-  llvm::DenseMap<const Symbol *, uint32_t> cmjaltIndexMap;
-
-  SmallVector<std::pair<const Symbol *, int>, 0>
-  selectEntries(llvm::DenseMap<const Symbol *, int> &candidates,
-                uint32_t maxSize);
-  int32_t getSizeReduction() const;
-  void writeEntries(uint8_t *buf,
-                    ArrayRef<std::pair<const Symbol *, int>> entries);
+  // Candidate maps: symbol -> (total code size reduction, table index).
+  llvm::DenseMap<const Symbol *, TableJumpEntry> cmjtCandidates;
+  llvm::DenseMap<const Symbol *, TableJumpEntry> cmjaltCandidates;
 };
 
 // The IgotPltSection is a Got associated with the PltSection for GNU Ifunc
