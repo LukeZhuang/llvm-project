@@ -391,33 +391,6 @@ private:
   SmallVector<const Symbol *, 0> entries;
 };
 
-struct TableJumpEntry {
-  int saved;
-  int index;
-};
-
-// Used by RISC-V Zcmt table jump relaxation.
-class TableJumpSection final : public SyntheticSection {
-public:
-  TableJumpSection(Ctx &);
-  size_t getSize() const override;
-  void writeTo(uint8_t *buf) override;
-
-  void scanTableJumpEntries(const InputSection &sec);
-  void finalizeContents() override;
-  int getCMJTEntryIndex(const Symbol *sym) const;
-  int getCMJALTEntryIndex(const Symbol *sym) const;
-
-private:
-  static constexpr size_t maxCMJTEntrySize = 32;
-  static constexpr size_t maxCMJALTEntrySize = 224;
-  static constexpr size_t startCMJALTEntryIdx = 32;
-
-  // Candidate maps: symbol -> (total code size reduction, table index).
-  llvm::DenseMap<const Symbol *, TableJumpEntry> cmjtCandidates;
-  llvm::DenseMap<const Symbol *, TableJumpEntry> cmjaltCandidates;
-};
-
 // The IgotPltSection is a Got associated with the PltSection for GNU Ifunc
 // Symbols that will be relocated by Target->IRelativeRel.
 // On most Targets the IgotPltSection will immediately follow the GotPltSection

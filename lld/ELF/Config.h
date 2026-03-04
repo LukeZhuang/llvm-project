@@ -64,7 +64,6 @@ class InputSection;
 class IpltSection;
 class MipsGotSection;
 class PPC64LongBranchTargetSection;
-class TableJumpSection;
 class PltSection;
 class RelocationBaseSection;
 class RelroPaddingSection;
@@ -576,7 +575,7 @@ struct InStruct {
   std::unique_ptr<RelroPaddingSection> relroPadding;
   std::unique_ptr<SyntheticSection> armCmseSGSection;
   std::unique_ptr<PPC64LongBranchTargetSection> ppc64LongBranchTarget;
-  std::unique_ptr<TableJumpSection> riscvTableJump;
+  std::unique_ptr<SyntheticSection> riscvTableJump;
   std::unique_ptr<SyntheticSection> mipsAbiFlags;
   std::unique_ptr<MipsGotSection> mipsGot;
   std::unique_ptr<SyntheticSection> mipsOptions;
