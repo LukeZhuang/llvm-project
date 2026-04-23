@@ -661,7 +661,8 @@ private:
                               MachineBasicBlock::iterator &NextMBBI);
   bool expandLoadTLSDescAddress(MachineBasicBlock &MBB,
                                 MachineBasicBlock::iterator MBBI,
-                                MachineBasicBlock::iterator &NextMBBI);
+                                MachineBasicBlock::iterator &NextMBBI,
+                                unsigned CallOpcode);
 
 #ifndef NDEBUG
   unsigned getInstSizeInBytes(const MachineFunction &MF) const {
@@ -722,7 +723,11 @@ bool RISCVPreRAExpandPseudo::expandMI(MachineBasicBlock &MBB,
   case RISCV::PseudoLA_TLS_GD:
     return expandLoadTLSGDAddress(MBB, MBBI, NextMBBI);
   case RISCV::PseudoLA_TLSDESC:
-    return expandLoadTLSDescAddress(MBB, MBBI, NextMBBI);
+    return expandLoadTLSDescAddress(MBB, MBBI, NextMBBI,
+                                    RISCV::PseudoTLSDESCCall);
+  case RISCV::PseudoLA_TLSDESC_V:
+    return expandLoadTLSDescAddress(MBB, MBBI, NextMBBI,
+                                    RISCV::PseudoTLSDESCCall_V);
   }
   return false;
 }
@@ -791,7 +796,7 @@ bool RISCVPreRAExpandPseudo::expandLoadTLSGDAddress(
 
 bool RISCVPreRAExpandPseudo::expandLoadTLSDescAddress(
     MachineBasicBlock &MBB, MachineBasicBlock::iterator MBBI,
-    MachineBasicBlock::iterator &NextMBBI) {
+    MachineBasicBlock::iterator &NextMBBI, unsigned CallOpcode) {
   MachineFunction *MF = MBB.getParent();
   MachineInstr &MI = *MBBI;
   DebugLoc DL = MI.getDebugLoc();
@@ -821,7 +826,7 @@ bool RISCVPreRAExpandPseudo::expandLoadTLSDescAddress(
       .addReg(ScratchReg)
       .addSym(AUIPCSymbol, RISCVII::MO_TLSDESC_ADD_LO);
 
-  BuildMI(MBB, MBBI, DL, TII->get(RISCV::PseudoTLSDESCCall), RISCV::X5)
+  BuildMI(MBB, MBBI, DL, TII->get(CallOpcode), RISCV::X5)
       .addReg(DestReg)
       .addImm(0)
       .addSym(AUIPCSymbol, RISCVII::MO_TLSDESC_CALL);

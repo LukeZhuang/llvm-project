@@ -9473,7 +9473,9 @@ SDValue RISCVTargetLowering::getTLSDescAddr(GlobalAddressSDNode *N,
   // addi  a0, tX, %tlsdesc_add_lo(label)  // R_RISCV_TLSDESC_ADD_LO12(label)
   // jalr  t0, tY                          // R_RISCV_TLSDESC_CALL(label)
   SDValue Addr = DAG.getTargetGlobalAddress(GV, DL, Ty, 0, 0);
-  return SDValue(DAG.getMachineNode(RISCV::PseudoLA_TLSDESC, DL, Ty, Addr), 0);
+  unsigned Opcode = Subtarget.hasVInstructions() ? RISCV::PseudoLA_TLSDESC_V
+                                                 : RISCV::PseudoLA_TLSDESC;
+  return SDValue(DAG.getMachineNode(Opcode, DL, Ty, Addr), 0);
 }
 
 SDValue RISCVTargetLowering::lowerGlobalTLSAddress(SDValue Op,

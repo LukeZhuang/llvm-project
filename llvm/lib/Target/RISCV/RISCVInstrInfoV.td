@@ -1916,6 +1916,35 @@ let Predicates = [HasVInstructionsI64, IsRV64] in {
 } // Predicates = [HasVInstructionsI64, IsRV64]
 } // ElementsDependOn = EltDepsNone
 
+//===----------------------------------------------------------------------===//
+// TLSDESC V-extension clobber variants
+//===----------------------------------------------------------------------===//
+// When the V extension is enabled, the TLSDESC resolver additionally clobbers
+// all vector registers and vector CSRs (vl, vtype, vxrm, vxsat) per the psABI.
+
+defvar TLSDESCVClobbers = !listconcat(
+    !foreach(i, !range(32), !cast<Register>("V"#i)),
+    [VTYPE, VL, VXSAT, VXRM]);
+
+let Predicates = [HasVInstructions] in {
+let hasSideEffects = 0, mayLoad = 1, mayStore = 0, Size = 32,
+    isCodeGenOnly = 1 in
+def PseudoLA_TLSDESC_V : Pseudo<(outs GPR:$dst), (ins bare_symbol:$src), [],
+                               "la.tlsdesc", "$dst, $src"> {
+  let Defs = !listconcat([X5, X10], TLSDESCVClobbers);
+}
+
+let isCall = 1, isBarrier = 1, isCodeGenOnly = 1, Size = 8, hasSideEffects = 0,
+    mayStore = 0, mayLoad = 0 in
+def PseudoTLSDESCCall_V : Pseudo<(outs GPR:$rd),
+                         (ins GPR:$rs1, simm12_lo:$imm12, tlsdesc_call_symbol:$src), [],
+                         "jalr", "$rd, ${imm12}(${rs1}), $src">,
+                         Sched<[WriteJalr, ReadJalr]> {
+  let Defs = !listconcat([X5, X10], TLSDESCVClobbers);
+  let Uses = [X10];
+}
+} // Predicates = [HasVInstructions]
+
 include "RISCVInstrInfoVPseudos.td"
 include "RISCVInstrInfoZvfbf.td"
 // Include the non-intrinsic ISel patterns
